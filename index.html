@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Prime Division</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            background: #000;
+            overflow: hidden;
+            font-family: 'Segoe UI', Arial, sans-serif;
+        }
+        canvas {
+            display: block;
+        }
+        #controls {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 100;
+            display: flex;
+            gap: 15px;
+            align-items: center;
+        }
+        button, label.file-btn {
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            color: white;
+            padding: 12px 30px;
+            font-size: 14px;
+            cursor: pointer;
+            border-radius: 25px;
+            transition: all 0.3s ease;
+            backdrop-filter: blur(10px);
+            display: inline-block;
+        }
+        button:hover, label.file-btn:hover {
+            background: rgba(255, 255, 255, 0.2);
+            border-color: rgba(255, 255, 255, 0.5);
+        }
+        #fileInput {
+            display: none;
+        }
+        #title {
+            position: fixed;
+            top: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: rgba(255, 255, 255, 0.8);
+            font-size: 24px;
+            font-weight: 300;
+            letter-spacing: 8px;
+            text-transform: uppercase;
+            z-index: 100;
+        }
+        #info {
+            position: fixed;
+            top: 70px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: rgba(255, 255, 255, 0.4);
+            font-size: 12px;
+            z-index: 100;
+        }
+    </style>
+</head>
+<body>
+    <div id="title">Prime Division</div>
+    <div id="info">Load your audio file to begin</div>
+    <canvas id="canvas"></canvas>
+    <div id="controls">
+        <input type="file" id="fileInput" accept="audio/*">
+        <label for="fileInput" class="file-btn">Load Audio</label>
+        <button id="playBtn" disabled>Play</button>
+        <button id="restartBtn" disabled>Restart</button>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const playBtn = document.getElementById('playBtn');
+        const restartBtn = document.getElementById('restartBtn');
+        const fileInput = document.getElementById('fileInput');
+        const info = document.getElementById('info');
+
+        let width, height;
+        let audioContext, analyser, source, dataArray, bufferLength;
+        let isPlaying = false;
+        let audioBuffer = null;
+        let currentTime = 0;
+
+        // Resize canvas
+        function resize() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+        }
+        resize();
+        window.addEventListener('resize', resize);
+
+        // Initialize audio context
+        function initAudioContext() {
+            if (!audioContext) {
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                analyser = audioContext.createAnalyser();
+                analyser.fftSize = 2048;
+                bufferLength = analyser.frequencyBinCount;
+                dataArray = new Uint8Array(bufferLength);
+            }
+        }
+
+        // Handle file selection
+        fileInput.addEventListener('change', async (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            info.textContent = 'Loading audio...';
+            initAudioContext();
+
+            try {
+                const arrayBuffer = await file.arrayBuffer();
+                audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+                info.textContent = 'Ready! Click Play';
+                playBtn.disabled = false;
+                restartBtn.disabled = false;
+
+                // Update title with filename
+                const filename = file.name.replace(/\.[^/.]+$/, '');
+                document.getElementById('title').textContent = filename;
+            } catch (error) {
+                info.textContent = 'Error loading audio: ' + error.message;
+                console.error('Error loading audio:', error);
+            }
+        });
+
+        // Play/Pause toggle
+        function togglePlay() {
+            if (!audioBuffer) return;
+
+            if (isPlaying) {
+                source.stop();
+                isPlaying = false;
+                playBtn.textContent = 'Play';
+            } else {
+                source = audioContext.createBufferSource();
+                source.buffer = audioBuffer;
+                source.connect(analyser);
+                analyser.connect(audioContext.destination);
+                source.start(0);
+                isPlaying = true;
+                playBtn.textContent = 'Pause';
+                info.textContent = '';
+
+                source.onended = () => {
+                    isPlaying = false;
+                    playBtn.textContent = 'Play';
+                };
+            }
+        }
+
+        // Restart from beginning
+        function restart() {
+            if (!audioBuffer) return;
+
+            // Stop current playback if playing
+            if (isPlaying) {
+                source.stop();
+            }
+
+            // Start from beginning
+            source = audioContext.createBufferSource();
+            source.buffer = audioBuffer;
+            source.connect(analyser);
+            analyser.connect(audioContext.destination);
+            source.start(0);
+            isPlaying = true;
+            playBtn.textContent = 'Pause';
+            info.textContent = '';
+
+            source.onended = () => {
+                isPlaying = false;
+                playBtn.textContent = 'Play';
+            };
+        }
+
+        playBtn.addEventListener('click', togglePlay);
+        restartBtn.addEventListener('click', restart);
+
+        // Get frequency data
+        function getFrequencyData() {
+            if (!analyser) return { bass: 0, mid: 0, high: 0, average: 0, data: [] };
+
+            analyser.getByteFrequencyData(dataArray);
+
+            let bass = 0, mid = 0, high = 0;
+            const bassRange = Math.floor(bufferLength * 0.1);
+            const midRange = Math.floor(bufferLength * 0.5);
+
+            for (let i = 0; i < bassRange; i++) bass += dataArray[i];
+            for (let i = bassRange; i < midRange; i++) mid += dataArray[i];
+            for (let i = midRange; i < bufferLength; i++) high += dataArray[i];
+
+            bass = bass / bassRange / 255;
+            mid = mid / (midRange - bassRange) / 255;
+            high = high / (bufferLength - midRange) / 255;
+
+            const average = (bass + mid + high) / 3;
+
+            return { bass, mid, high, average, data: dataArray };
+        }
+
+        // Draw geometric patterns
+        function drawGeometric(freq) {
+            const centerX = width / 2;
+            const centerY = height / 2;
+            const time = Date.now() * 0.001;
+
+            // Rotating circles
+            const circleCount = 8;
+            for (let i = 0; i < circleCount; i++) {
+                const angle = (i / circleCount) * Math.PI * 2 + time * 0.1;
+                const radius = 100 + freq.bass * 150;
+                const x = centerX + Math.cos(angle) * radius;
+                const y = centerY + Math.sin(angle) * radius;
+                const size = 20 + freq.data[i * 10] / 255 * 50;
+
+                ctx.beginPath();
+                ctx.arc(x, y, size, 0, Math.PI * 2);
+                ctx.strokeStyle = `hsla(${220 + i * 20}, 70%, 60%, ${0.5 + freq.average * 0.5})`;
+                ctx.lineWidth = 2;
+                ctx.stroke();
+            }
+
+            // Central pulsing shape
+            const sides = 6;
+            const centralRadius = 50 + freq.bass * 100;
+            ctx.beginPath();
+            for (let i = 0; i <= sides; i++) {
+                const angle = (i / sides) * Math.PI * 2 - Math.PI / 2 + time;
+                const x = centerX + Math.cos(angle) * centralRadius;
+                const y = centerY + Math.sin(angle) * centralRadius;
+                if (i === 0) ctx.moveTo(x, y);
+                else ctx.lineTo(x, y);
+            }
+            ctx.strokeStyle = `hsla(${260 + freq.high * 40}, 80%, 70%, 0.8)`;
+            ctx.lineWidth = 3 + freq.bass * 5;
+            ctx.stroke();
+
+            // Radiating lines
+            const lineCount = 36;
+            for (let i = 0; i < lineCount; i++) {
+                const angle = (i / lineCount) * Math.PI * 2 + time * 0.2;
+                const length = 200 + freq.data[i * 3] / 255 * 200;
+
+                ctx.beginPath();
+                ctx.moveTo(centerX, centerY);
+                ctx.lineTo(
+                    centerX + Math.cos(angle) * length,
+                    centerY + Math.sin(angle) * length
+                );
+                ctx.strokeStyle = `hsla(${200 + i * 2}, 60%, 50%, ${0.1 + freq.mid * 0.3})`;
+                ctx.lineWidth = 1;
+                ctx.stroke();
+            }
+        }
+
+        // Main animation loop
+        function animate() {
+            // Clear with fade effect
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.15)';
+            ctx.fillRect(0, 0, width, height);
+
+            const freq = getFrequencyData();
+            drawGeometric(freq);
+
+            requestAnimationFrame(animate);
+        }
+
+        // Initialize
+        animate();
+    </script>
+</body>
+</html>
