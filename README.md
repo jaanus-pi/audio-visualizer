@@ -1,2 +1,2 @@
-# Prime-Division
-audio visualizer vibe coded with claude 
+# audio-visualizer
+vibe coded using claude code
